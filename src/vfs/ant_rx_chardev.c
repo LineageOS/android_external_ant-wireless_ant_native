@@ -45,6 +45,14 @@ extern ANTStatus ant_tx_message_flowcontrol_none(ant_channel_type eTxPath, ANT_U
 
 #define ANT_POLL_TIMEOUT         ((int)30000)
 
+static ANT_U8 aucRxBuffer[NUM_ANT_CHANNELS][ANT_HCI_MAX_MSG_SIZE];
+
+#ifdef ANT_DEVICE_NAME // Single transport path
+	static int iRxBufferLength[NUM_ANT_CHANNELS] = {0};
+#else
+	static int iRxBufferLength[NUM_ANT_CHANNELS] = {0, 0};
+#endif // 
+
 int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo);
 
 /*
@@ -232,14 +240,13 @@ int setFlowControl(ant_channel_info_t *pstChnlInfo, ANT_U8 ucFlowSetting)
 int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo)
 {
    int iRet = -1;
-   ANT_U8 aucRxBuffer[ANT_HCI_MAX_MSG_SIZE];
    int iRxLenRead;
    int iCurrentHciPacketOffset;
-   int iHciPacketSize;
+   int iHciDataSize;
    ANT_FUNC_START();
 
    // Keep trying to read while there is an error, and that error is EAGAIN
-   while (((iRxLenRead = read(pstChnlInfo->iFd, aucRxBuffer, sizeof(aucRxBuffer))) < 0)
+   while (((iRxLenRead = read(pstChnlInfo->iFd, &aucRxBuffer[eChannel][iRxBufferLength[eChannel]], (sizeof(aucRxBuffer[eChannel]) - iRxBufferLength[eChannel]))) < 0)
                    && errno == EAGAIN)
       ;
 
@@ -261,10 +268,21 @@ int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo)
          goto out;
       }
    } else {
-      ANT_SERIAL(aucRxBuffer, iRxLenRead, 'R');
+      ANT_SERIAL(aucRxBuffer[eChannel], iRxLenRead, 'R');
 
+      iRxLenRead += iRxBufferLength[eChannel];   // add existing data on
+      
+      // if we didn't get a full packet, then just exit
+      if (iRxLenRead < (aucRxBuffer[eChannel][ANT_HCI_SIZE_OFFSET] + ANT_HCI_HEADER_SIZE + ANT_HCI_FOOTER_SIZE)) {
+         iRxBufferLength[eChannel] = iRxLenRead;
+         iRet = 0;
+         goto out;
+      }
+
+      iRxBufferLength[eChannel] = 0;    // reset buffer length here since we should have a full packet
+      
 #if ANT_HCI_OPCODE_SIZE == 1  // Check the different message types by opcode
-      ANT_U8 opcode = aucRxBuffer[ANT_HCI_OPCODE_OFFSET];
+      ANT_U8 opcode = aucRxBuffer[eChannel][ANT_HCI_OPCODE_OFFSET];
 
       if(ANT_HCI_OPCODE_COMMAND_COMPLETE == opcode) {
          // Command Complete, so signal a FLOW_GO
@@ -290,33 +308,39 @@ int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo)
 
          while(iCurrentHciPacketOffset < iRxLenRead) {
 
-            iHciPacketSize = aucRxBuffer[iCurrentHciPacketOffset + ANT_HCI_SIZE_OFFSET];
+            // TODO Allow HCI Packet Size value to be larger than 1 byte
+            // This currently works as no size value is greater than 255, and little endian
+            iHciDataSize = aucRxBuffer[eChannel][iCurrentHciPacketOffset + ANT_HCI_SIZE_OFFSET];
 
+            if ((iHciDataSize + ANT_HCI_HEADER_SIZE + ANT_HCI_FOOTER_SIZE + iCurrentHciPacketOffset) > 
+                  iRxLenRead) {
+               // we don't have a whole packet
+               iRxBufferLength[eChannel] = iRxLenRead - iCurrentHciPacketOffset;
+               memcpy(aucRxBuffer[eChannel], &aucRxBuffer[eChannel][iCurrentHciPacketOffset], iRxBufferLength[eChannel]);
+               // the increment at the end should push us out of the while loop
+            } else
 #ifdef ANT_MESG_FLOW_CONTROL
-            if (aucRxBuffer[iCurrentHciPacketOffset + ANT_HCI_DATA_OFFSET + ANT_MSG_ID_OFFSET] == 
+            if (aucRxBuffer[eChannel][iCurrentHciPacketOffset + ANT_HCI_DATA_OFFSET + ANT_MSG_ID_OFFSET] == 
                   ANT_MESG_FLOW_CONTROL) {
                // This is a flow control packet, not a standard ANT message
                if(setFlowControl(pstChnlInfo, \
-                     aucRxBuffer[iCurrentHciPacketOffset + ANT_HCI_DATA_OFFSET + ANT_MSG_DATA_OFFSET])) {
+                     aucRxBuffer[eChannel][iCurrentHciPacketOffset + ANT_HCI_DATA_OFFSET + ANT_MSG_DATA_OFFSET])) {
                   goto out;
                }
             } else
 #endif // ANT_MESG_FLOW_CONTROL
             {
                if (pstChnlInfo->fnRxCallback != NULL) {
-                  // TODO Allow HCI Packet Size value to be larger than 1 byte
-                  // This currently works as no size value is greater than 255, and little endian
-
 
                   // Loop through read data until all HCI packets are written to callback
-                     pstChnlInfo->fnRxCallback(iHciPacketSize, \
-                           &aucRxBuffer[iCurrentHciPacketOffset + ANT_HCI_DATA_OFFSET]);   
+                     pstChnlInfo->fnRxCallback(iHciDataSize, \
+                           &aucRxBuffer[eChannel][iCurrentHciPacketOffset + ANT_HCI_DATA_OFFSET]);   
                } else {
                   ANT_WARN("%s rx callback is null", pstChnlInfo->pcDevicePath);
-               }                  
+               }
             }
             
-            iCurrentHciPacketOffset = iCurrentHciPacketOffset + ANT_HCI_HEADER_SIZE + iHciPacketSize;               
+            iCurrentHciPacketOffset = iCurrentHciPacketOffset + ANT_HCI_HEADER_SIZE + ANT_HCI_FOOTER_SIZE + iHciDataSize;               
          }         
       }
 
