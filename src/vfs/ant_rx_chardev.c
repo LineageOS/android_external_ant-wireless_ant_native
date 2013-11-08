@@ -29,11 +29,12 @@
 #include <errno.h>
 #include <poll.h>
 #include <pthread.h>
+#include <stdint.h> /* for uint64_t */
 
 #include "ant_types.h"
 #include "antradio_power.h"
 #include "ant_rx_chardev.h"
-#include "ant_driver_defines.h"
+#include "ant_hci_defines.h"
 #include "ant_log.h"
 #include "ant_native.h"  // ANT_HCI_MAX_MSG_SIZE, ANT_MSG_ID_OFFSET, ANT_MSG_DATA_OFFSET,
                          // ant_radio_enabled_status()
@@ -53,7 +54,36 @@ static ANT_U8 aucRxBuffer[NUM_ANT_CHANNELS][ANT_HCI_MAX_MSG_SIZE];
 	static int iRxBufferLength[NUM_ANT_CHANNELS] = {0, 0};
 #endif // 
 
+// Defines for use with the poll() call
+#define EVENT_DATA_AVAILABLE (POLLIN|POLLRDNORM)
+#define EVENT_DISABLE (POLLHUP)
+#define EVENT_HARD_RESET (POLLERR|POLLPRI|POLLRDHUP)
+
+#define EVENTS_TO_LISTEN_FOR (EVENT_DATA_AVAILABLE|EVENT_DISABLE|EVENT_HARD_RESET)
+
+// Plus one is for the eventfd shutdown signal.
+#define NUM_POLL_FDS (NUM_ANT_CHANNELS + 1)
+#define EVENTFD_IDX NUM_ANT_CHANNELS
+
+void doReset(ant_rx_thread_info_t *stRxThreadInfo);
 int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo);
+
+/*
+ * Function to check that all given flags are set in a particular value.
+ * Designed for use with the revents field of pollfds filled out by poll().
+ *
+ * Parameters:
+ *    - value: The value that will be checked to contain all flags.
+ *    - flags: Bitwise-or of the flags that value should be checked for.
+ *
+ * Returns:
+ *    - true IFF all the bits that are set in 'flags' are also set in 'value'
+ */
+ANT_BOOL areAllFlagsSet(short value, short flags)
+{
+   value &= flags;
+   return (value == flags);
+}
 
 /*
  * This thread waits for ANT messages from a VFS file.
@@ -63,67 +93,97 @@ void *fnRxThread(void *ant_rx_thread_info)
    int iMutexLockResult;
    int iPollRet;
    ant_rx_thread_info_t *stRxThreadInfo;
-   struct pollfd astPollFd[NUM_ANT_CHANNELS];
+   struct pollfd astPollFd[NUM_POLL_FDS];
    ant_channel_type eChannel;
    ANT_FUNC_START();
 
    stRxThreadInfo = (ant_rx_thread_info_t *)ant_rx_thread_info;
    for (eChannel = 0; eChannel < NUM_ANT_CHANNELS; eChannel++) {
       astPollFd[eChannel].fd = stRxThreadInfo->astChannels[eChannel].iFd;
-      astPollFd[eChannel].events = POLLIN | POLLRDNORM;
+      astPollFd[eChannel].events = EVENTS_TO_LISTEN_FOR;
    }
+   // Fill out poll request for the shutdown signaller.
+   astPollFd[EVENTFD_IDX].fd = stRxThreadInfo->iRxShutdownEventFd;
+   astPollFd[EVENTFD_IDX].events = POLL_IN;
 
    /* continue running as long as not terminated */
    while (stRxThreadInfo->ucRunThread) {
       /* Wait for data available on any file (transport path) */
-      iPollRet = poll(astPollFd, NUM_ANT_CHANNELS, ANT_POLL_TIMEOUT);
+      iPollRet = poll(astPollFd, NUM_POLL_FDS, ANT_POLL_TIMEOUT);
       if (!iPollRet) {
          ANT_DEBUG_V("poll timed out, checking exit cond");
       } else if (iPollRet < 0) {
-         ANT_ERROR("read thread exiting, unhandled error: %s", strerror(errno));
+         ANT_ERROR("unhandled error: %s, attempting recovery.", strerror(errno));
+         doReset(stRxThreadInfo);
+         goto out;
       } else {
          for (eChannel = 0; eChannel < NUM_ANT_CHANNELS; eChannel++) {
-            if (astPollFd[eChannel].revents & (POLLERR | POLLPRI | POLLRDHUP)) {
-               ANT_ERROR("poll error from %s. exiting rx thread",
+            if (areAllFlagsSet(astPollFd[eChannel].revents, EVENT_HARD_RESET)) {
+               ANT_ERROR("Hard reset indicated by %s. Attempting recovery.",
                             stRxThreadInfo->astChannels[eChannel].pcDevicePath);
-               /* Chip was reset or other error, only way to recover is to
-                * close and open ANT chardev */
-               stRxThreadInfo->ucChipResetting = 1;
+               doReset(stRxThreadInfo);
+               goto out;
+            } else if (areAllFlagsSet(astPollFd[eChannel].revents, EVENT_DISABLE)) {
+               /* chip reported it was disabled, either unexpectedly or due to us closing the file */
+               ANT_DEBUG_D(
+                     "poll hang-up from %s. exiting rx thread", stRxThreadInfo->astChannels[eChannel].pcDevicePath);
 
-               if (g_fnStateCallback) {
-                  g_fnStateCallback(RADIO_STATUS_RESETTING);
-               }
+               // set flag to exit out of Rx Loop
+               stRxThreadInfo->ucRunThread = 0;
 
-               goto reset;
-            } else if (astPollFd[eChannel].revents & (POLLIN | POLLRDNORM)) {
+            } else if (areAllFlagsSet(astPollFd[eChannel].revents, EVENT_DATA_AVAILABLE)) {
                ANT_DEBUG_D("data on %s. reading it",
                             stRxThreadInfo->astChannels[eChannel].pcDevicePath);
 
                if (readChannelMsg(eChannel, &stRxThreadInfo->astChannels[eChannel]) < 0) {
-                  goto out;
+                  // set flag to exit out of Rx Loop
+                  stRxThreadInfo->ucRunThread = 0;
                }
+            } else if (areAllFlagsSet(astPollFd[eChannel].revents, POLLNVAL)) {
+               ANT_ERROR("poll was called on invalid file descriptor %s. Attempting recovery.",
+                     stRxThreadInfo->astChannels[eChannel].pcDevicePath);
+               doReset(stRxThreadInfo);
+               goto out;
+            } else if (areAllFlagsSet(astPollFd[eChannel].revents, POLLERR)) {
+               ANT_ERROR("Unknown error from %s. Attempting recovery.",
+                     stRxThreadInfo->astChannels[eChannel].pcDevicePath);
+               doReset(stRxThreadInfo);
+               goto out;
             } else if (astPollFd[eChannel].revents) {
                ANT_DEBUG_W("unhandled poll result %#x from %s",
                             astPollFd[eChannel].revents,
                             stRxThreadInfo->astChannels[eChannel].pcDevicePath);
             }
          }
+         // Now check for shutdown signal
+         if(areAllFlagsSet(astPollFd[EVENTFD_IDX].revents, POLLIN))
+         {
+            ANT_DEBUG_I("rx thread caught shutdown signal.");
+            // reset the counter by reading.
+            uint64_t counter;
+            read(stRxThreadInfo->iRxShutdownEventFd, &counter, sizeof(counter));
+            // don't care if read error, going to close the thread anyways.
+            stRxThreadInfo->ucRunThread = 0;
+         } else if (astPollFd[EVENTFD_IDX].revents != 0) {
+            ANT_ERROR("Shutdown event descriptor had unexpected event: %#x. exiting rx thread.",
+                  astPollFd[EVENTFD_IDX].revents);
+            stRxThreadInfo->ucRunThread = 0;
+         }
       }
    }
 
-out:
-   stRxThreadInfo->ucRunThread = 0;
-
-   /* Try to get stEnabledStatusLock.
-    * if you get it then noone is enabling or disabling
-    * if you can't get it assume something made you exit */
+   /* disable ANT radio if not already disabling */
+   // Try to get stEnabledStatusLock.
+   // if you get it then no one is enabling or disabling
+   // if you can't get it assume something made you exit
    ANT_DEBUG_V("try getting stEnabledStatusLock in %s", __FUNCTION__);
    iMutexLockResult = pthread_mutex_trylock(stRxThreadInfo->pstEnabledStatusLock);
    if (!iMutexLockResult) {
       ANT_DEBUG_V("got stEnabledStatusLock in %s", __FUNCTION__);
       ANT_WARN("rx thread has unexpectedly crashed, cleaning up");
-      stRxThreadInfo->stRxThread = 0; /* spoof our handle as closed so we don't
-                                       * try to join ourselves in disable */
+
+      // spoof our handle as closed so we don't try to join ourselves in disable
+      stRxThreadInfo->stRxThread = 0;
 
       if (g_fnStateCallback) {
          g_fnStateCallback(RADIO_STATUS_DISABLING);
@@ -145,15 +205,26 @@ out:
       ANT_DEBUG_V("stEnabledStatusLock busy");
    }
 
-   // FIXME This is not the end of the function
-   // Probably because goto:reset is a bad implementation; can have a reset function.
-   // Will only end here on Android.
+   out:
    ANT_FUNC_END();
 #ifdef ANDROID
    return NULL;
 #endif
+}
 
-reset:
+void doReset(ant_rx_thread_info_t *stRxThreadInfo)
+{
+   int iMutexLockResult;
+
+   ANT_FUNC_START();
+   /* Chip was reset or other error, only way to recover is to
+    * close and open ANT chardev */
+   stRxThreadInfo->ucChipResetting = 1;
+
+   if (g_fnStateCallback) {
+      g_fnStateCallback(RADIO_STATUS_RESETTING);
+   }
+
    stRxThreadInfo->ucRunThread = 0;
 
    ANT_DEBUG_V("getting stEnabledStatusLock in %s", __FUNCTION__);
@@ -188,9 +259,6 @@ reset:
    stRxThreadInfo->ucChipResetting = 0;
 
    ANT_FUNC_END();
-#ifdef ANDROID
-   return NULL;
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////
