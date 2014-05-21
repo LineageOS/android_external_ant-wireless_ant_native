@@ -34,10 +34,14 @@ LOCAL_C_INCLUDES += \
 endif # BOARD_ANT_WIRELESS_DEVICE = "qualcomm-uart"
 
 LOCAL_SRC_FILES := \
-   $(COMMON_DIR)/JAntNative.cpp \
    $(COMMON_DIR)/ant_utils.c \
    $(ANT_DIR)/ant_native_chardev.c \
    $(ANT_DIR)/ant_rx_chardev.c \
+
+ifneq ($(TARGET_ARCH),arm64)
+LOCAL_SRC_FILES += $(COMMON_DIR)/JAntNative.cpp
+endif
+
 
 # JNI
 LOCAL_C_INCLUDE += $(JNI_H_INCLUDE)
