@@ -42,9 +42,7 @@ LOCAL_SRC_FILES := \
    $(ANT_DIR)/ant_native_chardev.c \
    $(ANT_DIR)/ant_rx_chardev.c \
 
-ifneq ($(TARGET_ARCH),arm64)
 LOCAL_SRC_FILES += $(COMMON_DIR)/JAntNative.cpp
-endif
 
 
 # JNI
