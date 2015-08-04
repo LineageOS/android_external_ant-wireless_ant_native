@@ -34,6 +34,7 @@
 #include <stdint.h> /* for uint64_t */
 #include <sys/eventfd.h> /* For eventfd() */
 #include <unistd.h> /* for read(), write(), and close() */
+#include <string.h>
 
 #include "ant_types.h"
 #include "ant_native.h"
@@ -43,7 +44,7 @@
 #include "ant_rx_chardev.h"
 #include "ant_hci_defines.h"
 #include "ant_log.h"
-#include "bt_vendor_lib.h" /* used by qualcomms code to call into libbt-vendor.so */
+#include "bt_vendor_qcom.h" /* used by qualcomms code to call into libbt-vendor.so */
 #include <cutils/properties.h> /* used by qualcomms additions for logging. */
 // The following functions are dummy implementations of the callbacks required by libbt-vendor.
 static void vendor_fwcfg_cb(bt_vendor_op_result_t result) {
