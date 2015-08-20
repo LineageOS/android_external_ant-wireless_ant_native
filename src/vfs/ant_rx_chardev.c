@@ -27,6 +27,7 @@
 \******************************************************************************/
 
 #include <errno.h>
+#include <string.h>
 #include <poll.h>
 #include <pthread.h>
 #include <stdint.h> /* for uint64_t */

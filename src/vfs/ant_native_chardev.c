@@ -27,6 +27,7 @@
 \******************************************************************************/
 
 #include <errno.h>
+#include <string.h>
 #include <fcntl.h> /* for open() */
 #include <linux/ioctl.h> /* For hard reset */
 #include <pthread.h>
