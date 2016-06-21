@@ -40,6 +40,10 @@ ifeq ($(BOARD_HAS_QCA_BT_ROME), true)
 LOCAL_CFLAGS += -DBT_SOC_TYPE_ROME
 endif
 
+ifeq ($(BOARD_HAS_QCA_BT_SOC), "cherokee")
+LOCAL_CFLAGS += -DBT_SOC_TYPE_CHEROKEE
+endif
+
 LOCAL_SRC_FILES := \
    $(COMMON_DIR)/ant_utils.c \
    $(ANT_DIR)/ant_native_chardev.c \
