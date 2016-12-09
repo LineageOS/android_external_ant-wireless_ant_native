@@ -27,19 +27,19 @@ LOCAL_C_INCLUDES := \
    $(LOCAL_PATH)/src/common/inc \
    $(LOCAL_PATH)/$(ANT_DIR)/inc \
    $(BDROID_DIR)/hci/include \
-   $(QCOM_DIR)/include \
+   $(QCOM_DIR)/include
 
 
 ifeq ($(BOARD_ANT_WIRELESS_DEVICE),"qualcomm-uart")
 LOCAL_C_INCLUDES += \
-   $(LOCAL_PATH)/$(ANT_DIR)/qualcomm/uart \
+   $(LOCAL_PATH)/$(ANT_DIR)/qualcomm/uart
 
 endif # BOARD_ANT_WIRELESS_DEVICE = "qualcomm-uart"
 
 LOCAL_SRC_FILES := \
    $(COMMON_DIR)/ant_utils.c \
    $(ANT_DIR)/ant_native_chardev.c \
-   $(ANT_DIR)/ant_rx_chardev.c \
+   $(ANT_DIR)/ant_rx_chardev.c
 
 LOCAL_SRC_FILES += $(COMMON_DIR)/JAntNative.cpp
 
@@ -48,15 +48,15 @@ LOCAL_SRC_FILES += $(COMMON_DIR)/JAntNative.cpp
 LOCAL_C_INCLUDE += $(JNI_H_INCLUDE)
 
 LOCAL_SHARED_LIBRARIES += \
-   libnativehelper \
+   libnativehelper
 
 # logging and dll loading
 LOCAL_SHARED_LIBRARIES += \
    libcutils \
    libdl \
+   liblog
 
 LOCAL_MODULE_TAGS := optional
-LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libantradio
 
 include $(BUILD_SHARED_LIBRARY)

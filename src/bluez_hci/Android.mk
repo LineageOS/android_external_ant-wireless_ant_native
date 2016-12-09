@@ -28,12 +28,12 @@ endif
 LOCAL_C_INCLUDES := \
    $(LOCAL_PATH)/src/common/inc \
    $(LOCAL_PATH)/$(ANT_DIR)/inc \
-   system/bluetooth/bluez-clean-headers \
+   system/bluetooth/bluez-clean-headers
 
 ifeq ($(BOARD_ANT_WIRELESS_POWER),"bluedroid")
 LOCAL_CFLAGS += \
    -DBOARD_HAVE_ANT_WIRELESS \
-   -DUSE_EXTERNAL_POWER_LIBRARY \
+   -DUSE_EXTERNAL_POWER_LIBRARY
 
 LOCAL_C_INCLUDES += system/bluetooth/bluedroid/include/bluedroid
 endif # BOARD_ANT_WIRELESS_POWER = bluedroid
@@ -43,24 +43,24 @@ LOCAL_SRC_FILES := \
    $(COMMON_DIR)/ant_utils.c \
    $(ANT_DIR)/ant_native_hci.c \
    $(ANT_DIR)/ant_rx.c \
-   $(ANT_DIR)/ant_tx.c \
+   $(ANT_DIR)/ant_tx.c
 
 # JNI
 LOCAL_C_INCLUDE += $(JNI_H_INCLUDE)
 
 LOCAL_SHARED_LIBRARIES += \
-   libnativehelper \
+   libnativehelper
 
 # chip power
 LOCAL_SHARED_LIBRARIES += \
-   libbluedroid \
+   libbluedroid
 
 # logging
 LOCAL_SHARED_LIBRARIES += \
    libcutils \
+   liblog
 
 LOCAL_MODULE_TAGS := optional
-LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libantradio
 
 include $(BUILD_SHARED_LIBRARY)
