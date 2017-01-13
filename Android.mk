@@ -76,6 +76,8 @@ LOCAL_C_INCLUDES:= \
 	$(LOCAL_PATH)/src/common/inc \
 	$(LOCAL_PATH)/app
 
+LOCAL_C_INCLUDES += frameworks/base/core/jni/include
+
 LOCAL_CFLAGS:= -g -c -W -Wall -O2
 
 LOCAL_SRC_FILES:= \
