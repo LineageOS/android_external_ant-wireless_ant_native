@@ -46,14 +46,14 @@ LOCAL_SRC_FILES := \
 LOCAL_C_INCLUDE += $(JNI_H_INCLUDE)
 
 LOCAL_SHARED_LIBRARIES += \
-   libnativehelper \
+   libnativehelper
 
 # logging
 LOCAL_SHARED_LIBRARIES += \
    libcutils \
+   liblog
 
 LOCAL_MODULE_TAGS := optional
-LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libantradio
 
 include $(BUILD_SHARED_LIBRARY)
