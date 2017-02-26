@@ -58,6 +58,7 @@ LOCAL_SHARED_LIBRARIES += \
 LOCAL_SHARED_LIBRARIES += \
    libcutils \
    libdl \
+   libbt-vendor \
 
 LOCAL_MODULE_TAGS := optional
 LOCAL_PRELINK_MODULE := false
