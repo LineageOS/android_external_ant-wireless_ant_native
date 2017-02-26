@@ -59,6 +59,7 @@ LOCAL_SHARED_LIBRARIES += \
    libcutils \
    libdl \
 
+LOCAL_REQUIRED_MODULES := libbt-vendor
 LOCAL_MODULE_TAGS := optional
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libantradio
