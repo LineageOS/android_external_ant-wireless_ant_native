@@ -69,4 +69,6 @@ LOCAL_SHARED_LIBRARIES += \
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := libantradio
 
+ifneq ($(QCPATH),)
 include $(BUILD_SHARED_LIBRARY)
+endif
