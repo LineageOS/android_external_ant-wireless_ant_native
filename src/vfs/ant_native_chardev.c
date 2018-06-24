@@ -34,7 +34,6 @@
 #include <stdint.h> /* for uint64_t */
 #include <sys/eventfd.h> /* For eventfd() */
 #include <unistd.h> /* for read(), write(), and close() */
-#include <string.h>
 
 #include "ant_types.h"
 #include "ant_native.h"
@@ -44,10 +43,6 @@
 #include "ant_rx_chardev.h"
 #include "ant_hci_defines.h"
 #include "ant_log.h"
-
-#if (ANT_HCI_CHANNEL_SIZE > 0) || !defined(ANT_DEVICE_NAME)
-#define MULTIPATH_TX
-#endif
 
 #if ANT_HCI_SIZE_SIZE > 1
 #include "ant_utils.h"  // Put HCI Size value across multiple bytes
@@ -175,20 +170,16 @@ ANTStatus ant_deinit(void)
 //  Psuedocode:
 /*
 LOCK enable_LOCK
-   IF current_state != ENABLED
-      State callback: STATE = ENABLING
-      ant enable
-      IF ant_enable success
-         State callback: STATE = ENABLED
-         RESULT = SUCCESS
-      ELSE
-         ant disable
-         State callback: STATE = Current state
-         RESULT = FAILURE
-      ENDIF
-   ELSE
-      RESULT = SUCCESS
-   ENDIF
+    State callback: STATE = ENABLING
+    ant enable
+    IF ant_enable success
+        State callback: STATE = ENABLED
+        RESULT = SUCCESS
+    ELSE
+        ant disable
+        State callback: STATE = Current state
+        RESULT = FAILURE
+    ENDIF
 UNLOCK
 */
 ////////////////////////////////////////////////////////////////////
@@ -206,28 +197,23 @@ ANTStatus ant_enable_radio(void)
    }
    ANT_DEBUG_V("got stEnabledStatusLock in %s", __FUNCTION__);
 
-   if (ant_radio_enabled_status() != RADIO_STATUS_ENABLED) {
+   if (g_fnStateCallback) {
+      g_fnStateCallback(RADIO_STATUS_ENABLING);
+   }
+
+   if (ant_enable() < 0) {
+      ANT_ERROR("ant enable failed: %s", strerror(errno));
+
+      ant_disable();
+
       if (g_fnStateCallback) {
-         g_fnStateCallback(RADIO_STATUS_ENABLING);
-      }
-
-      if (ant_enable() < 0) {
-         ANT_ERROR("ant enable failed: %s", strerror(errno));
-
-         ant_disable();
-
-         if (g_fnStateCallback) {
-            g_fnStateCallback(ant_radio_enabled_status());
-         }
-      } else {
-         if (g_fnStateCallback) {
-            g_fnStateCallback(RADIO_STATUS_ENABLED);
-         }
-
-         result_status = ANT_STATUS_SUCCESS;
+         g_fnStateCallback(ant_radio_enabled_status());
       }
    } else {
-      ANT_DEBUG_D("Ignoring redundant enable call.");
+      if (g_fnStateCallback) {
+         g_fnStateCallback(RADIO_STATUS_ENABLED);
+      }
+
       result_status = ANT_STATUS_SUCCESS;
    }
 
@@ -350,12 +336,10 @@ out:
 //  Psuedocode:
 /*
 LOCK enable_LOCK
-   IF current_state != DISABLED
-      State callback: STATE = DISABLING
-      ant disable
-      State callback: STATE = Current state
-   ENDIF
-   RESULT = SUCCESS
+    State callback: STATE = DISABLING
+    ant disable
+    State callback: STATE = Current state
+    RESULT = SUCCESS
 UNLOCK
 */
 ////////////////////////////////////////////////////////////////////
@@ -373,18 +357,14 @@ ANTStatus ant_disable_radio(void)
    }
    ANT_DEBUG_V("got stEnabledStatusLock in %s", __FUNCTION__);
 
-   if (ant_radio_enabled_status() != RADIO_STATUS_DISABLED) {
-      if (g_fnStateCallback) {
-         g_fnStateCallback(RADIO_STATUS_DISABLING);
-      }
+   if (g_fnStateCallback) {
+      g_fnStateCallback(RADIO_STATUS_DISABLING);
+   }
 
-      ant_disable();
+   ant_disable();
 
-      if (g_fnStateCallback) {
-         g_fnStateCallback(ant_radio_enabled_status());
-      }
-   } else {
-      ANT_DEBUG_D("Ignoring redundant disable call.");
+   if (g_fnStateCallback) {
+      g_fnStateCallback(ant_radio_enabled_status());
    }
 
    ret = ANT_STATUS_SUCCESS;
@@ -743,11 +723,6 @@ ENDIF
 ////////////////////////////////////////////////////////////////////
 ANTStatus ant_tx_message(ANT_U8 ucLen, ANT_U8 *pucMesg)
 {
-#if defined(MULTIPATH_TX)
-   ANT_BOOL bIsData;
-#endif
-   ant_channel_type eTxChannel;
-   ant_channel_type eFlowChannel;
    ANTStatus status = ANT_STATUS_FAILED;
    // TODO ANT_HCI_MAX_MSG_SIZE is transport (driver) dependent.
    ANT_U8 txBuffer[ANT_HCI_MAX_MSG_SIZE];
@@ -761,35 +736,10 @@ ANTStatus ant_tx_message(ANT_U8 ucLen, ANT_U8 *pucMesg)
       goto out;
    }
 
-#if defined(MULTIPATH_TX)
-switch (pucMesg[ANT_MSG_ID_OFFSET]) {
-   case MESG_BROADCAST_DATA_ID:
-   case MESG_ACKNOWLEDGED_DATA_ID:
-   case MESG_BURST_DATA_ID:
-   case MESG_EXT_BROADCAST_DATA_ID:
-   case MESG_EXT_ACKNOWLEDGED_DATA_ID:
-   case MESG_EXT_BURST_DATA_ID:
-   case MESG_ADV_BURST_DATA_ID:
-      bIsData = ANT_TRUE;
-      break;
-   default:
-      bIsData = ANT_FALSE;
-      break;
-   }
-
-   ANT_DEBUG_V("tx message: bIsData=%d", bIsData);
-#endif
-
 #if ANT_HCI_OPCODE_SIZE == 1
    txBuffer[ANT_HCI_OPCODE_OFFSET] = ANT_HCI_OPCODE_TX;
 #elif ANT_HCI_OPCODE_SIZE > 1
 #error "Specified ANT_HCI_OPCODE_SIZE not currently supported"
-#endif
-
-#if ANT_HCI_CHANNEL_SIZE == 1
-   txBuffer[ANT_HCI_CHANNEL_OFFSET] = bIsData ? ANT_HCI_DATA_CHANNEL : ANT_HCI_COMMAND_CHANNEL;
-#elif ANT_HCI_OPCODE_SIZE > 1
-#error "Specified ANT_HCI_CHANNEL_SIZE not currently supported"
 #endif
 
 #if ANT_HCI_SIZE_SIZE == 1
@@ -804,24 +754,21 @@ switch (pucMesg[ANT_MSG_ID_OFFSET]) {
 
    ANT_SERIAL(txBuffer, txMessageLength, 'T');
 
-#ifdef ANT_DEVICE_NAME
-   eTxChannel = SINGLE_CHANNEL;
-   eFlowChannel = SINGLE_CHANNEL;
-#else
-   eTxChannel = bIsData ? DATA_CHANNEL : COMMAND_CHANNEL;
-   eFlowChannel = COMMAND_CHANNEL;
-#endif
-
-#if !defined(MULTIPATH_TX) // Single transport path
-   status = ant_tx_message_flowcontrol_wait(eTxChannel, eFlowChannel, txMessageLength, txBuffer);
+#ifdef ANT_DEVICE_NAME // Single transport path
+   status = ant_tx_message_flowcontrol_wait(SINGLE_CHANNEL, SINGLE_CHANNEL, txMessageLength, txBuffer);
 #else // Separate data/command paths
-   if (bIsData)
-   {
-      status = ant_tx_message_flowcontrol_wait(eTxChannel, eFlowChannel, txMessageLength, txBuffer);
-   }
-   else
-   {
-      status = ant_tx_message_flowcontrol_none(eTxChannel, txMessageLength, txBuffer);
+   switch (txBuffer[ANT_HCI_DATA_OFFSET + ANT_MSG_ID_OFFSET]) {
+   case MESG_BROADCAST_DATA_ID:
+   case MESG_ACKNOWLEDGED_DATA_ID:
+   case MESG_BURST_DATA_ID:
+   case MESG_EXT_BROADCAST_DATA_ID:
+   case MESG_EXT_ACKNOWLEDGED_DATA_ID:
+   case MESG_EXT_BURST_DATA_ID:
+   case MESG_ADV_BURST_DATA_ID:
+      status = ant_tx_message_flowcontrol_wait(DATA_CHANNEL, COMMAND_CHANNEL, txMessageLength, txBuffer);
+      break;
+   default:
+      status = ant_tx_message_flowcontrol_none(COMMAND_CHANNEL, txMessageLength, txBuffer);
    }
 #endif // Separate data/command paths
 
@@ -950,9 +897,6 @@ int ant_enable(void)
    iRet = 0;
 
 out:
-   if (stRxThreadInfo.stRxThread == 0) {
-      stRxThreadInfo.ucRunThread = 0;
-   }
    ANT_FUNC_END();
    return iRet;
 }
