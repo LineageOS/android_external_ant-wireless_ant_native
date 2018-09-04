@@ -95,7 +95,7 @@ ANT_BOOL areAllFlagsSet(short value, short flags)
  * This thread is run occasionally as a detached thread in order to send a keepalive message to the
  * chip.
  */
-void *fnKeepAliveThread(void *unused)
+void *fnKeepAliveThread()
 {
    ANT_DEBUG_V("Sending dummy keepalive message.");
    ant_tx_message(sizeof(KEEPALIVE_MESG)/sizeof(ANT_U8), KEEPALIVE_MESG);
