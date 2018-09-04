@@ -47,21 +47,22 @@
 #include "bt_vendor_qcom.h" /* used by qualcomms code to call into libbt-vendor.so */
 #include <cutils/properties.h> /* used by qualcomms additions for logging. */
 // The following functions are dummy implementations of the callbacks required by libbt-vendor.
-static void vendor_fwcfg_cb(bt_vendor_op_result_t result) {
+static void vendor_fwcfg_cb(bt_vendor_op_result_t result __unused) {
 }
-static void vendor_scocfg_cb(bt_vendor_op_result_t result) {
+static void vendor_scocfg_cb(bt_vendor_op_result_t result __unused) {
 }
-static void vendor_lpm_vnd_cb(bt_vendor_op_result_t result) {
+static void vendor_lpm_vnd_cb(bt_vendor_op_result_t result __unused) {
 }
-static void* vendor_alloc(int size) {
+static void* vendor_alloc(int size __unused) {
     return NULL;
 }
-static void vendor_dealloc(void *p_buf) {
+static void vendor_dealloc(void *p_buf __unused) {
 }
-static uint8_t vendor_xmit_cb(uint16_t opcode, void *p_buf, tINT_CMD_CBACK p_cback) {
+static uint8_t vendor_xmit_cb(uint16_t opcode __unused, void *p_buf __unused,
+        tINT_CMD_CBACK p_cback __unused) {
     return 0;
 }
-static void vendor_epilog_cb(bt_vendor_op_result_t result) {
+static void vendor_epilog_cb(bt_vendor_op_result_t result __unused) {
 }
 
 // This struct is used to regsiter the dummy callbacks with libbt-vendor
