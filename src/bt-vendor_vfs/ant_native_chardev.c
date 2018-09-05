@@ -910,7 +910,7 @@ int init_transport_bdroid(int on) {
             return -1;
         }
         /*call ANT_USERIAL_OPEN to get ANT handle*/
-        ret = vendor_interface->op(BT_VND_OP_ANT_USERIAL_OPEN, fd);
+        ret = vendor_interface->op((bt_vendor_opcode_t) BT_VND_OP_ANT_USERIAL_OPEN, fd);
         ALOGE("ret value: %d", ret);
         if (ret != 1)
         {
@@ -923,7 +923,7 @@ int init_transport_bdroid(int on) {
     } else {
         if (vendor_interface) {
             ALOGE("Close and cleanup the interfaces");
-            int ret = vendor_interface->op(BT_VND_OP_ANT_USERIAL_CLOSE, NULL);
+            int ret = vendor_interface->op((bt_vendor_opcode_t) BT_VND_OP_ANT_USERIAL_CLOSE, NULL);
             ALOGE("ret value: %d", ret);
             ALOGI("Turn off BT power");
             powerstate = BT_VND_PWR_OFF;
