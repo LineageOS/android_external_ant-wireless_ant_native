@@ -53,6 +53,8 @@ static void vendor_scocfg_cb(bt_vendor_op_result_t result __unused) {
 }
 static void vendor_lpm_vnd_cb(bt_vendor_op_result_t result __unused) {
 }
+static void vendor_audio_state_cb(bt_vendor_op_result_t result __unused) {
+}
 static void* vendor_alloc(int size __unused) {
     return NULL;
 }
@@ -64,6 +66,9 @@ static uint8_t vendor_xmit_cb(uint16_t opcode __unused, void *p_buf __unused,
 }
 static void vendor_epilog_cb(bt_vendor_op_result_t result __unused) {
 }
+static void vendor_a2dp_offload_cb(bt_vendor_op_result_t result __unused,
+    bt_vendor_opcode_t op __unused, uint8_t bta_av_handle __unused) {
+}
 
 // This struct is used to regsiter the dummy callbacks with libbt-vendor
 bt_vendor_interface_t *vendor_interface=NULL;
@@ -72,10 +77,12 @@ static const bt_vendor_callbacks_t vendor_callbacks = {
     vendor_fwcfg_cb,
     vendor_scocfg_cb,
     vendor_lpm_vnd_cb,
+    vendor_audio_state_cb,
     vendor_alloc,
     vendor_dealloc,
     vendor_xmit_cb,
-    vendor_epilog_cb
+    vendor_epilog_cb,
+    vendor_a2dp_offload_cb
 };
 
 #if ANT_HCI_SIZE_SIZE > 1
