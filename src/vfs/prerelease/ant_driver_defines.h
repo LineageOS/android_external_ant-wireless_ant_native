@@ -50,7 +50,7 @@
 #define ANT_DATA_DEVICE_NAME                 "/dev/smd6"
 // OR
 //   If chip uses one path:
-// #define ANT_DEVICE_NAME                      "/dev/ant"
+// #define ANT_DEVICE_NAME                      "/dev/Z"
 
 // Set to the number of bytes of header is for Opcode:
 #define ANT_HCI_OPCODE_SIZE                  0
@@ -83,9 +83,5 @@
 
 //     That signals Flow Stop:
 #define ANT_FLOW_STOP                        ((ANT_U8)0x80)
-
-// If using a channel ID byte, define the ids.
-#define ANT_HCI_COMMAND_CHANNEL              ((ANT_U8)0x0C)
-#define ANT_HCI_DATA_CHANNEL                 ((ANT_U8)0x0E)
 
 #endif /* ifndef __VFS_PRERELEASE_H */
