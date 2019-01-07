@@ -61,7 +61,7 @@ ANT_U8 aucRxBuffer[NUM_ANT_CHANNELS][ANT_HCI_MAX_MSG_SIZE];
 #define NUM_POLL_FDS (NUM_ANT_CHANNELS + 1)
 #define EVENTFD_IDX NUM_ANT_CHANNELS
 
-//static ANT_U8 KEEPALIVE_MESG[] = {0x01, 0x00, 0x00};
+static ANT_U8 KEEPALIVE_MESG[] = {0x01, 0x00, 0x00};
 static ANT_U8 KEEPALIVE_RESP[] = {0x03, 0x40, 0x00, 0x00, 0x28};
 
 void doReset(ant_rx_thread_info_t *stRxThreadInfo);
@@ -72,12 +72,12 @@ int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo, a
  * This thread is run occasionally as a detached thread in order to send a keepalive message to the
  * chip.
  */
-/*void *fnKeepAliveThread(void *unused)
+void *fnKeepAliveThread(void *unused)
 {
    ANT_DEBUG_V("Sending dummy keepalive message.");
    ant_tx_message(sizeof(KEEPALIVE_MESG)/sizeof(ANT_U8), KEEPALIVE_MESG);
    return NULL;
-}*/
+}
 
 /*
  * This thread waits for ANT messages from a VFS file.
@@ -100,7 +100,7 @@ void *fnRxThread(void *ant_rx_thread_info)
 
    /* continue running as long as not terminated */
    while (stRxThreadInfo->ucRunThread) {
-      iPollRet = ant_rx_check();
+      iPollRet = ant_rx_check(stRxThreadInfo->bWaitingForKeepaliveResponse ? KEEPALIVE_TIMEOUT : ANT_POLL_TIMEOUT);
       if(iPollRet == 0)
       {
          readChannelMsg(0, &stRxThreadInfo->astChannels[0], stRxThreadInfo);
@@ -108,8 +108,36 @@ void *fnRxThread(void *ant_rx_thread_info)
       else
       {
          ANT_WARN("rx check failed , cleaning up");
+         if (ant_get_status() == ANT_RADIO_RESETTING)
+         {
+             ANT_WARN("recovering from unexpected HIDL server death");
+             doReset(stRxThreadInfo);
+             return NULL;
+         }
+
+         if (!stRxThreadInfo->bWaitingForKeepaliveResponse)
+         {
+             stRxThreadInfo->bWaitingForKeepaliveResponse = ANT_TRUE;
+             // Keep alive is done on a separate thread so that rxThread can handle flow control
+             // during the message.
+             pthread_t thread;
+             // Don't care if it failed as the consequence is just a missed keep-alive.
+             pthread_create(&thread, NULL, fnKeepAliveThread, NULL);
+             // Detach the thread so that we don't need to join it later.
+             pthread_detach(thread);
+             ANT_DEBUG_V("poll timed out, checking exit cond");
+         }
+         else
+         {
+             ANT_WARN("No response to keepalive, attempting recovery.");
+             doReset(stRxThreadInfo);
+             break;
+         }
          break;
       }
+      // Doesn't matter what data we received, we know the chip is alive.
+      stRxThreadInfo->bWaitingForKeepaliveResponse = ANT_FALSE;
+
       // Need to indicate that we are done handling the rx buffer and it can be
       // overwritten again.
       ant_rx_clear();
@@ -208,6 +236,7 @@ void doReset(ant_rx_thread_info_t *stRxThreadInfo)
 ////////////////////////////////////////////////////////////////////
 //  setFlowControl
 //
+//
 //  Sets the flow control "flag" to the value provided and signals the transmit
 //  thread to check the value.
 //
@@ -264,11 +293,11 @@ int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo, a
       ANT_SERIAL(aucRxBuffer[eChannel], iRxLenRead, 'R');
 
       if (aucRxBuffer[eChannel][0] == 0x1c && aucRxBuffer[eChannel][1] == 0x01 &&
-          aucRxBuffer[eChannel][2]== 0x0F)
+          aucRxBuffer[eChannel][2] == 0x0F)
       {
-       ANT_WARN("HW err received, recover from here");
-       doReset(stRxThreadInfo);
-       goto out;
+         ANT_WARN("HW err received, recover from here");
+         doReset(stRxThreadInfo);
+         goto out;
       }
 
       // if we didn't get a full packet, then just exit
@@ -304,10 +333,8 @@ int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo, a
       {
       // Received an ANT packet
          iCurrentHciPacketOffset = 0;
-
          while(iCurrentHciPacketOffset < iRxLenRead) {
             ANT_DEBUG_D("iRxLenRead = %d",iRxLenRead);
-
             // TODO Allow HCI Packet Size value to be larger than 1 byte
             // This currently works as no size value is greater than 255, and little endian
             iHciDataSize = aucRxBuffer[eChannel][iCurrentHciPacketOffset + ANT_HCI_SIZE_OFFSET];
