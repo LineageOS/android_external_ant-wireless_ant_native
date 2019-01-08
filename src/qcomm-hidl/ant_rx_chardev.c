@@ -65,7 +65,7 @@ ANT_U8 aucRxBuffer[NUM_ANT_CHANNELS][ANT_HCI_MAX_MSG_SIZE];
 static ANT_U8 KEEPALIVE_RESP[] = {0x03, 0x40, 0x00, 0x00, 0x28};
 
 void doReset(ant_rx_thread_info_t *stRxThreadInfo);
-int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo);
+int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo, ant_rx_thread_info_t *stRxThreadInfo);
 
 
 /*
@@ -103,7 +103,7 @@ void *fnRxThread(void *ant_rx_thread_info)
       iPollRet = ant_rx_check();
       if(iPollRet == 0)
       {
-         readChannelMsg(0, &stRxThreadInfo->astChannels[0]);
+         readChannelMsg(0, &stRxThreadInfo->astChannels[0], stRxThreadInfo);
       }
       else
       {
@@ -249,7 +249,7 @@ int setFlowControl(ant_channel_info_t *pstChnlInfo, ANT_U8 ucFlowSetting)
    return iRet;
 }
 
-int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo)
+int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo, ant_rx_thread_info_t *stRxThreadInfo)
 {
    int iRet = -1;
    int iRxLenRead = 0;
@@ -262,6 +262,14 @@ int readChannelMsg(ant_channel_type eChannel, ant_channel_info_t *pstChnlInfo)
       iRxLenRead += iRxBufferLength[eChannel];   // add existing data on
       ANT_DEBUG_D("iRxLenRead %d",iRxLenRead);
       ANT_SERIAL(aucRxBuffer[eChannel], iRxLenRead, 'R');
+
+      if (aucRxBuffer[eChannel][0] == 0x1c && aucRxBuffer[eChannel][1] == 0x01 &&
+          aucRxBuffer[eChannel][2]== 0x0F)
+      {
+       ANT_WARN("HW err received, recover from here");
+       doReset(stRxThreadInfo);
+       goto out;
+      }
 
       // if we didn't get a full packet, then just exit
       if (iRxLenRead < (aucRxBuffer[eChannel][ANT_HCI_SIZE_OFFSET] + ANT_HCI_HEADER_SIZE + ANT_HCI_FOOTER_SIZE)) {
