@@ -203,11 +203,11 @@ void hci_close() {
       {
          ALOGE("%s: HIDL daemon is dead", __func__);
       }
+      std::unique_lock< std::mutex> lock(ant_hci.data_mtx);
+      ant_hci.data_cond.notify_all();
    }
    ant_hci.state = ANT_RADIO_DISABLED;
    ant_rx_clear();
-   std::unique_lock< std::mutex> lock(ant_hci.data_mtx);
-   ant_hci.data_cond.notify_all();
    anthci =nullptr;
    ALOGI("%s: exit", __func__);
 }
