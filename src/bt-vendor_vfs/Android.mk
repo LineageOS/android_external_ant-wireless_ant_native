@@ -20,7 +20,11 @@ LOCAL_CFLAGS := -g -c -W -Wall -O2
 
 # needed to pull in the header file for libbt-vendor.so
 BDROID_DIR:= system/bt
+<<<<<<< HEAD   (c674e6 Merge remote-tracking branch 'remotes/origin/caf/github/mast)
 QCOM_DIR:= hardware/qcom/bt/libbt-vendor
+=======
+QCOM_DIR:= $(call project-path-for,qcom-bt-vendor)/libbt-vendor
+>>>>>>> CHANGE (df797b ant_native: Fix project pathmap)
 
 # Added hci/include to give access to the header for the libbt-vendorso interface.
 LOCAL_C_INCLUDES := \
