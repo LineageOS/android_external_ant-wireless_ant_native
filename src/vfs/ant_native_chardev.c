@@ -288,7 +288,6 @@ ANTStatus ant_radio_hard_reset(void)
    ANT_FUNC_START();
 
 #ifdef ANT_IOCTL_RESET
-   ant_channel_type eChannel;
    int iLockResult;
 
    result_status = ANT_STATUS_FAILED;
