@@ -45,6 +45,10 @@ else ifeq ($(BOARD_ANT_WIRELESS_DEVICE),"cg29xx")
 
 ANT_DIR := src/vfs
 
+else ifeq ($(BOARD_ANT_WIRELESS_DEVICE),"mt6630")
+
+ANT_DIR := src/vfs
+
 else ifeq ($(BOARD_ANT_WIRELESS_DEVICE),"qualcomm-smd")
 
 ANT_DIR := src/vfs

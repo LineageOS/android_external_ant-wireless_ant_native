@@ -26,6 +26,10 @@ ifeq ($(BOARD_ANT_WIRELESS_DEVICE),"cg29xx")
 LOCAL_C_INCLUDES += \
    $(LOCAL_PATH)/$(ANT_DIR)/ste/cg29xx \
 
+else ifeq ($(BOARD_ANT_WIRELESS_DEVICE),"mt6630")
+LOCAL_C_INCLUDES += \
+   $(LOCAL_PATH)/$(ANT_DIR)/ste/mt6630 \
+
 else ifeq ($(BOARD_ANT_WIRELESS_DEVICE),"qualcomm-smd")
 LOCAL_C_INCLUDES += \
    $(LOCAL_PATH)/$(ANT_DIR)/qualcomm/smd \
